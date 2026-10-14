@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { useEffect, useRef, useState } from 'react';
+import { api, SERVER_URL } from '../api.js';
 
 const emptyForm = { name: '', price: '', description: '' };
 const LIMIT = 5;
@@ -11,10 +11,14 @@ function ProductsPage({ user, onLogout }) {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [form, setForm] = useState(emptyForm);
+  const [imageFile, setImageFile] = useState(null);
+  const [preview, setPreview] = useState('');
   const [editId, setEditId] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const fileInputRef = useRef(null);
 
   const handleApiError = (err) => {
     if (err.status === 401) {
@@ -47,6 +51,31 @@ function ProductsPage({ user, onLogout }) {
     setError('');
   };
 
+  // Image chunne par preview dikhao
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Image must be smaller than 2 MB');
+      e.target.value = '';
+      return;
+    }
+
+    setImageFile(file);
+    setPreview(URL.createObjectURL(file));
+    setError('');
+  };
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setImageFile(null);
+    setPreview('');
+    setEditId(null);
+    setError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -59,21 +88,22 @@ function ProductsPage({ user, onLogout }) {
     const wasEditing = editId;
 
     try {
-      const body = {
-        name: form.name,
-        price: Number(form.price),
-        description: form.description,
-      };
-
-      if (wasEditing) {
-        await api(`/products/${wasEditing}`, { method: 'PUT', body });
-      } else {
-        await api('/products', { method: 'POST', body });
+      // Image ke sath bhejne ke liye FormData
+      const formData = new FormData();
+      formData.append('name', form.name);
+      formData.append('price', form.price);
+      formData.append('description', form.description);
+      if (imageFile) {
+        formData.append('image', imageFile);
       }
 
-      setForm(emptyForm);
-      setEditId(null);
-      setError('');
+      if (wasEditing) {
+        await api(`/products/${wasEditing}`, { method: 'PUT', body: formData });
+      } else {
+        await api('/products', { method: 'POST', body: formData });
+      }
+
+      resetForm();
 
       if (!wasEditing && page !== 1) {
         setPage(1);
@@ -93,15 +123,12 @@ function ProductsPage({ user, onLogout }) {
       price: String(product.price),
       description: product.description || '',
     });
+    setImageFile(null);
+    setPreview(product.image ? `${SERVER_URL}${product.image}` : '');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setEditId(product.id);
     setError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancel = () => {
-    setForm(emptyForm);
-    setEditId(null);
-    setError('');
   };
 
   const handleDelete = async (id) => {
@@ -110,7 +137,7 @@ function ProductsPage({ user, onLogout }) {
     try {
       await api(`/products/${id}`, { method: 'DELETE' });
 
-      if (editId === id) handleCancel();
+      if (editId === id) resetForm();
 
       if (products.length === 1 && page > 1) {
         setPage(page - 1);
@@ -173,11 +200,25 @@ function ProductsPage({ user, onLogout }) {
                 value={form.description} onChange={handleChange} />
             </div>
 
+            <div className="field">
+              <label htmlFor="image">Product Image</label>
+              <div className="image-field">
+                {preview ? (
+                  <img src={preview} alt="Preview" className="preview" />
+                ) : (
+                  <div className="preview preview-empty">No image</div>
+                )}
+                <input id="image" type="file" accept="image/png, image/jpeg, image/webp"
+                  ref={fileInputRef} onChange={handleImageChange} />
+              </div>
+              <small className="hint">JPG, PNG or WEBP. Max 2 MB.</small>
+            </div>
+
             {error && <p className="error">{error}</p>}
 
             <div className="actions">
               {editId && (
-                <button type="button" className="btn btn-secondary" onClick={handleCancel}>
+                <button type="button" className="btn btn-secondary" onClick={resetForm}>
                   Cancel
                 </button>
               )}
@@ -212,6 +253,7 @@ function ProductsPage({ user, onLogout }) {
               <thead>
                 <tr>
                   <th>#</th>
+                  <th>Image</th>
                   <th>Name</th>
                   <th>Price</th>
                   <th>Description</th>
@@ -220,10 +262,10 @@ function ProductsPage({ user, onLogout }) {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="5" className="empty">Loading...</td></tr>
+                  <tr><td colSpan="6" className="empty">Loading...</td></tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="empty">
+                    <td colSpan="6" className="empty">
                       {search ? `No products match "${search}"` : 'No products yet. Add one above.'}
                     </td>
                   </tr>
@@ -231,6 +273,13 @@ function ProductsPage({ user, onLogout }) {
                   products.map((p, index) => (
                     <tr key={p.id}>
                       <td>{(page - 1) * LIMIT + index + 1}</td>
+                      <td>
+                        {p.image ? (
+                          <img src={`${SERVER_URL}${p.image}`} alt={p.name} className="thumb" />
+                        ) : (
+                          <div className="thumb thumb-empty">-</div>
+                        )}
+                      </td>
                       <td className="name">{p.name}</td>
                       <td>Rs {Number(p.price).toLocaleString()}</td>
                       <td className="desc" title={p.description}>{p.description || '-'}</td>
