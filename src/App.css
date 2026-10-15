@@ -155,3 +155,36 @@ td.desc { max-width: 260px; overflow: hidden; text-overflow: ellipsis; color: #6
   .search input { flex: 1; min-width: 0; }
   .topbar-right span { display: none; }
 }
+
+
+/* ---------- Profile ---------- */
+.avatar {
+  border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 1px solid #e5e7eb; display: block;
+}
+.avatar-letter {
+  display: grid; place-items: center; font-weight: 700;
+  background: #eef2ff; color: #4f46e5;
+}
+.profile-btn {
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  font-size: 14px; color: #374151; padding: 4px 8px; border-radius: 999px;
+}
+.profile-btn:hover { background: #f3f4f6; }
+.container.narrow { max-width: 600px; }
+.back-link { align-self: flex-start; }
+.profile-photo { display: flex; align-items: center; gap: 20px; }
+.profile-photo-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.file-btn { display: inline-block; }
+.link.danger { color: #dc2626; padding: 0; }
+.field input:disabled { background: #f9fafb; color: #6b7280; cursor: not-allowed; }
+.badge {
+  display: inline-block; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; text-transform: capitalize;
+  background: #f3f4f6; color: #374151;
+}
+.badge-admin { background: #fef3c7; color: #92400e; }
+@media (max-width: 640px) {
+  .profile-btn span { display: none; }
+}

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, imageSrc } from '../api.js';
-
+import Topbar from './Topbar.jsx';
 const emptyForm = { name: '', price: '', description: '' };
 const LIMIT = 5;
 
-function ProductsPage({ user, onLogout }) {
+function ProductsPage({ user, onLogout, onOpenProfile }) {
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [page, setPage] = useState(1);
@@ -163,14 +163,7 @@ function ProductsPage({ user, onLogout }) {
 
   return (
     <div className="page">
-      <header className="topbar">
-        <h2>My Products</h2>
-        <div className="topbar-right">
-          <span>Hi, {user.name}</span>
-          <button className="btn btn-secondary" onClick={onLogout}>Logout</button>
-        </div>
-      </header>
-
+             <Topbar user={user} title="My Products" onProfile={onOpenProfile} onLogout={onLogout} />
       <main className="container">
         <section className="card">
           <div className="card-header">
