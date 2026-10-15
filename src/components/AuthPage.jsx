@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { api, setToken } from '../api.js';
+import ForgotPassword from './ForgotPassword.jsx';
 
 function AuthPage({ onLogin }) {
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState('login'); // 'login', 'signup' ya 'forgot'
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,6 +41,11 @@ function AuthPage({ onLogin }) {
     setError('');
   };
 
+  // Forgot password wala page
+  if (mode === 'forgot') {
+    return <ForgotPassword onBack={() => { setMode('login'); setError(''); }} />;
+  }
+
   return (
     <div className="auth-page">
       <form className="card auth-card" onSubmit={handleSubmit}>
@@ -67,6 +73,14 @@ function AuthPage({ onLogin }) {
           <input id="password" name="password" type="password" placeholder="Min 6 characters"
             value={form.password} onChange={handleChange} />
         </div>
+
+        {!isSignup && (
+          <div className="forgot-row">
+            <button type="button" className="link" onClick={() => { setMode('forgot'); setError(''); }}>
+              Forgot password?
+            </button>
+          </div>
+        )}
 
         {error && <p className="error">{error}</p>}
 
