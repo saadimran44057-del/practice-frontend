@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, SERVER_URL } from '../api.js';
+import { api, imageSrc } from '../api.js';
 
 const emptyForm = { name: '', price: '', description: '' };
 const LIMIT = 5;
@@ -124,7 +124,7 @@ function ProductsPage({ user, onLogout }) {
       description: product.description || '',
     });
     setImageFile(null);
-    setPreview(product.image ? `${SERVER_URL}${product.image}` : '');
+    setPreview(imageSrc(product.image));
     if (fileInputRef.current) fileInputRef.current.value = '';
     setEditId(product.id);
     setError('');
@@ -275,7 +275,7 @@ function ProductsPage({ user, onLogout }) {
                       <td>{(page - 1) * LIMIT + index + 1}</td>
                       <td>
                         {p.image ? (
-                          <img src={`${SERVER_URL}${p.image}`} alt={p.name} className="thumb" />
+                          <img src={imageSrc(p.image)} alt={p.name} className="thumb" />
                         ) : (
                           <div className="thumb thumb-empty">-</div>
                         )}

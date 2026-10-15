@@ -1,6 +1,12 @@
 export const SERVER_URL = 'http://localhost:8000';
 const API_URL = `${SERVER_URL}/api`;
 
+// Image ka poora link: Cloudinary wali (https://...) waisi hi, purani local par server ka address
+export const imageSrc = (image) => {
+  if (!image) return '';
+  return image.startsWith('http') ? image : `${SERVER_URL}${image}`;
+};
+
 export const getToken = () => localStorage.getItem('token');
 export const setToken = (token) => localStorage.setItem('token', token);
 export const clearToken = () => localStorage.removeItem('token');
@@ -9,7 +15,6 @@ export const api = async (path, { method = 'GET', body } = {}) => {
   const isFormData = body instanceof FormData;
   const headers = {};
 
-  // FormData (image) ke sath Content-Type browser khud lagata hai
   if (!isFormData) {
     headers['Content-Type'] = 'application/json';
   }
