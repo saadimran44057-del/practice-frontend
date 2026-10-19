@@ -1,4 +1,4 @@
-export const SERVER_URL = 'http://localhost:8000';
+export const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_URL = `${SERVER_URL}/api`;
 
 // Full image link: Cloudinary (https://...) as it is, old local ones get the server address
