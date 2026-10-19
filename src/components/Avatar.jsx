@@ -1,16 +1,16 @@
-// Profile photo ho to photo, warna naam ka pehla letter
+// Show the profile photo, or the first letter of the name
 function Avatar({ user, size = 36 }) {
-    const style = { width: size, height: size, fontSize: size * 0.42 };
-  
-    if (user.avatar) {
-      return <img src={user.avatar} alt={user.name} className="avatar" style={style} />;
-    }
-  
-    return (
-      <div className="avatar avatar-letter" style={style}>
-        {user.name ? user.name.charAt(0).toUpperCase() : '?'}
-      </div>
-    );
+  const style = { width: size, height: size, fontSize: Math.round(size * 0.42) };
+
+  if (user.avatar) {
+    return <img src={user.avatar} alt="" className="avatar" style={style} referrerPolicy="no-referrer" />;
   }
-  
-  export default Avatar;
+
+  return (
+    <div className="avatar avatar-letter" style={style} aria-hidden="true">
+      {user.name ? user.name.charAt(0).toUpperCase() : '?'}
+    </div>
+  );
+}
+
+export default Avatar;

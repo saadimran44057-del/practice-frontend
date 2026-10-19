@@ -1,7 +1,7 @@
 export const SERVER_URL = 'http://localhost:8000';
 const API_URL = `${SERVER_URL}/api`;
 
-// Image ka poora link: Cloudinary wali (https://...) waisi hi, purani local par server ka address
+// Full image link: Cloudinary (https://...) as it is, old local ones get the server address
 export const imageSrc = (image) => {
   if (!image) return '';
   return image.startsWith('http') ? image : `${SERVER_URL}${image}`;
@@ -15,6 +15,7 @@ export const api = async (path, { method = 'GET', body } = {}) => {
   const isFormData = body instanceof FormData;
   const headers = {};
 
+  // With FormData (image) the browser sets Content-Type itself
   if (!isFormData) {
     headers['Content-Type'] = 'application/json';
   }

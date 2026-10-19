@@ -1,44 +1,70 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, imageSrc } from '../api.js';
 import Topbar from './Topbar.jsx';
-const emptyForm = { name: '', price: '', description: '' };
-const LIMIT = 5;
+import ProductModal from './ProductModal.jsx';
+import ConfirmDialog from './ConfirmDialog.jsx';
+import HeroSlider from './HeroSlider.jsx';
+import { IconPlus, IconSearch, IconClose, IconEdit, IconTrash } from './Icons.jsx';
+import { can } from '../permissions.js';
 
-function ProductsPage({ user, onLogout, onOpenProfile }) {
+const LIMIT = 8;
+
+const formatPrice = (price) => `Rs ${Number(price).toLocaleString('en-PK')}`;
+
+// "12 in stock", "Only 3 left" or "Out of stock"
+function StockTag({ stock }) {
+  if (stock <= 0) return <span className="stock-tag stock-out">Out of stock</span>;
+  if (stock <= 5) return <span className="stock-tag stock-low">Only {stock} left</span>;
+  return <span className="stock-tag">{stock} in stock</span>;
+}
+
+function ProductsPage({ user, onLogout, onEditProfile, onNavigate, notify }) {
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [form, setForm] = useState(emptyForm);
-  const [imageFile, setImageFile] = useState(null);
-  const [preview, setPreview] = useState('');
-  const [editId, setEditId] = useState(null);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const fileInputRef = useRef(null);
+  // null = closed, {} = add, { product } = edit
+  const [productModal, setProductModal] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const handleApiError = (err) => {
-    if (err.status === 401) {
-      onLogout();
-      return;
-    }
-    setError(err.message);
-  };
+  // Newest products with a photo, for the slider at the top
+  const [heroSlides, setHeroSlides] = useState([]);
+
+  // What this user may do with other people's products
+  const canSeeAll = can(user, 'products.view');
+  const canEditAny = can(user, 'products.edit');
+  const canDeleteAny = can(user, 'products.delete');
 
   const loadProducts = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const query = new URLSearchParams({ page, limit: LIMIT, search });
       const data = await api(`/products?${query}`);
       setProducts(data.data);
       setPagination(data.pagination);
     } catch (err) {
-      handleApiError(err);
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setLoadError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadHero = async () => {
+    try {
+      const data = await api('/products?limit=20');
+      setHeroSlides(data.data.filter((p) => p.image).slice(0, 5));
+    } catch {
+      // The slider is extra; the grid below shows any real error
     }
   };
 
@@ -46,278 +72,239 @@ function ProductsPage({ user, onLogout, onOpenProfile }) {
     loadProducts();
   }, [page, search]);
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setError('');
-  };
+  useEffect(() => {
+    loadHero();
+  }, []);
 
-  // Image chunne par preview dikhao
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // Same rule as the cards: your own unblocked products, or anyone's with products.edit
+  const canEditProduct = (p) => (p.userId === user.id && !p.isBlocked) || canEditAny;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Image must be smaller than 2 MB');
-      e.target.value = '';
-      return;
-    }
-
-    setImageFile(file);
-    setPreview(URL.createObjectURL(file));
-    setError('');
-  };
-
-  const resetForm = () => {
-    setForm(emptyForm);
-    setImageFile(null);
-    setPreview('');
-    setEditId(null);
-    setError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!form.name || !form.price) {
-      setError('Name and price are required');
-      return;
-    }
-
-    setSaving(true);
-    const wasEditing = editId;
-
-    try {
-      // Image ke sath bhejne ke liye FormData
-      const formData = new FormData();
-      formData.append('name', form.name);
-      formData.append('price', form.price);
-      formData.append('description', form.description);
-      if (imageFile) {
-        formData.append('image', imageFile);
-      }
-
-      if (wasEditing) {
-        await api(`/products/${wasEditing}`, { method: 'PUT', body: formData });
-      } else {
-        await api('/products', { method: 'POST', body: formData });
-      }
-
-      resetForm();
-
-      if (!wasEditing && page !== 1) {
+  // Search as you type, but wait until typing pauses
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const value = searchInput.trim();
+      if (value !== search) {
         setPage(1);
-      } else {
-        await loadProducts();
+        setSearch(value);
       }
-    } catch (err) {
-      handleApiError(err);
-    } finally {
-      setSaving(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const handleSaved = async (saved, isEdit) => {
+    setProductModal(null);
+    notify(isEdit ? 'Product updated' : 'Product added');
+    loadHero();
+    if (!isEdit && page !== 1) {
+      setPage(1);
+    } else {
+      await loadProducts();
     }
   };
 
-  const handleEdit = (product) => {
-    setForm({
-      name: product.name,
-      price: String(product.price),
-      description: product.description || '',
-    });
-    setImageFile(null);
-    setPreview(imageSrc(product.image));
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setEditId(product.id);
-    setError('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this product?')) return;
-
+  const handleDelete = async () => {
+    setDeleting(true);
     try {
-      await api(`/products/${id}`, { method: 'DELETE' });
-
-      if (editId === id) resetForm();
-
+      await api(`/products/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null);
+      notify('Product deleted');
+      loadHero();
       if (products.length === 1 && page > 1) {
         setPage(page - 1);
       } else {
         await loadProducts();
       }
     } catch (err) {
-      handleApiError(err);
+      if (err.status === 401) {
+        onLogout();
+        return;
+      }
+      setDeleteTarget(null);
+      notify(err.message, 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    setSearch(searchInput.trim());
-  };
-
-  const clearSearch = () => {
-    setSearchInput('');
-    setSearch('');
-    setPage(1);
-  };
+  const countLabel = pagination.total === 1 ? '1 item' : `${pagination.total} items`;
 
   return (
     <div className="page">
-             <Topbar user={user} title="My Products" onProfile={onOpenProfile} onLogout={onLogout} />
+      <Topbar
+        user={user}
+        view="products"
+        onNavigate={onNavigate}
+        onEditProfile={onEditProfile}
+        onLogout={onLogout}
+      />
+
       <main className="container">
-        <section className="card">
-          <div className="card-header">
-            <h3>{editId ? 'Edit Product' : 'Add Product'}</h3>
-            <p>{editId ? 'Update the details below.' : 'Fill in the details to add a new product.'}</p>
+        {/* Only when there's at least one product with a photo */}
+        {heroSlides.length > 0 && (
+          <HeroSlider
+            user={user}
+            slides={heroSlides}
+            canEdit={canEditProduct}
+            onEdit={(product) => setProductModal({ product })}
+          />
+        )}
+
+        <div className="page-head">
+          <div className="page-title">
+            <h1>Products</h1>
+            {!loading && <span className="count">{countLabel}</span>}
           </div>
 
-          <form className="form" onSubmit={handleSubmit}>
-            <div className="row">
-              <div className="field">
-                <label htmlFor="name">Product Name</label>
-                <input id="name" name="name" type="text" placeholder="e.g. Dell Laptop"
-                  value={form.name} onChange={handleChange} />
-              </div>
-
-              <div className="field">
-                <label htmlFor="price">Price (Rs)</label>
-                <input id="price" name="price" type="number" placeholder="e.g. 85000"
-                  value={form.price} onChange={handleChange} />
-              </div>
-            </div>
-
-            <div className="field">
-              <label htmlFor="description">Description</label>
-              <textarea id="description" name="description" rows="3"
-                placeholder="Optional details..."
-                value={form.description} onChange={handleChange} />
-            </div>
-
-            <div className="field">
-              <label htmlFor="image">Product Image</label>
-              <div className="image-field">
-                {preview ? (
-                  <img src={preview} alt="Preview" className="preview" />
-                ) : (
-                  <div className="preview preview-empty">No image</div>
-                )}
-                <input id="image" type="file" accept="image/png, image/jpeg, image/webp"
-                  ref={fileInputRef} onChange={handleImageChange} />
-              </div>
-              <small className="hint">JPG, PNG or WEBP. Max 2 MB.</small>
-            </div>
-
-            {error && <p className="error">{error}</p>}
-
-            <div className="actions">
-              {editId && (
-                <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                  Cancel
+          <div className="page-actions">
+            <label className="search">
+              <IconSearch />
+              <input
+                type="search"
+                placeholder="Search products"
+                aria-label="Search products"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+              {searchInput && (
+                <button type="button" className="search-clear" aria-label="Clear search"
+                  onClick={() => setSearchInput('')}>
+                  <IconClose />
                 </button>
               )}
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Saving...' : editId ? 'Update Product' : 'Add Product'}
-              </button>
-            </div>
-          </form>
-        </section>
+            </label>
 
-        <section className="card">
-          <div className="card-header list-header">
-            <div>
-              <h3>Product List</h3>
-              <p>{pagination.total} product(s) found</p>
-            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setProductModal({})}>
+              <IconPlus /> Add product
+            </button>
+          </div>
+        </div>
 
-            <form className="search" onSubmit={handleSearch}>
-              <input type="text" placeholder="Search by name..."
-                value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
-              <button type="submit" className="btn btn-primary">Search</button>
-              {search && (
-                <button type="button" className="btn btn-secondary" onClick={clearSearch}>
-                  Clear
+        {loadError && (
+          <div className="notice">
+            <span>Couldn't load products: {loadError}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={loadProducts}>
+              Try again
+            </button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="grid">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="product-card skeleton" aria-hidden="true">
+                <div className="product-image" />
+                <div className="product-info">
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : products.length === 0 && !loadError ? (
+          <div className="empty">
+            {search ? (
+              <>
+                <h2>No products match "{search}"</h2>
+                <p>Check the spelling or try a shorter search.</p>
+                <button type="button" className="btn btn-secondary" onClick={() => setSearchInput('')}>
+                  Clear search
                 </button>
-              )}
-            </form>
+              </>
+            ) : (
+              <>
+                <h2>Your catalog is empty</h2>
+                <p>Add your first product with a photo, price and description.</p>
+                <button type="button" className="btn btn-primary" onClick={() => setProductModal({})}>
+                  <IconPlus /> Add product
+                </button>
+              </>
+            )}
           </div>
+        ) : (
+          <div className="grid">
+            {products.map((p) => {
+              const isMine = p.userId === user.id;
+              const showEdit = canEditProduct(p);
+              const showDelete = isMine || canDeleteAny;
 
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Image</th>
-                  <th>Name</th>
-                  <th>Price</th>
-                  <th>Description</th>
-                  <th className="center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="6" className="empty">Loading...</td></tr>
-                ) : products.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="empty">
-                      {search ? `No products match "${search}"` : 'No products yet. Add one above.'}
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((p, index) => (
-                    <tr key={p.id}>
-                      <td>{(page - 1) * LIMIT + index + 1}</td>
-                      <td>
-                        {p.image ? (
-                          <img src={imageSrc(p.image)} alt={p.name} className="thumb" />
-                        ) : (
-                          <div className="thumb thumb-empty">-</div>
-                        )}
-                      </td>
-                      <td className="name">{p.name}</td>
-                      <td>Rs {Number(p.price).toLocaleString()}</td>
-                      <td className="desc" title={p.description}>{p.description || '-'}</td>
-                      <td>
-                        <div className="icon-group">
-                          <button className="icon-btn edit" onClick={() => handleEdit(p)} aria-label="Edit product">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                          </button>
-                          <button className="icon-btn delete" onClick={() => handleDelete(p.id)} aria-label="Delete product">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4h8v2" />
-                              <path d="M19 6l-1 14H6L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+              return (
+              <article key={p.id} className={`product-card ${p.isBlocked ? 'is-blocked' : ''}`}>
+                <div className="product-image">
+                  {p.image ? (
+                    <img src={imageSrc(p.image)} alt={p.name} loading="lazy" />
+                  ) : (
+                    <span className="product-image-empty" aria-hidden="true">
+                      {p.name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                <div className="product-info">
+                  <h3 title={p.name}>{p.name}</h3>
+                  <StockTag stock={p.stock} />
+                  {p.isBlocked && <span className="status status-blocked">Blocked by admin</span>}
+                  {p.description && <p className="product-desc">{p.description}</p>}
+                  {canSeeAll && !isMine && p.User && <p className="product-owner">Listed by {p.User.name}</p>}
+
+                  <div className="product-foot">
+                    <span className="price">{formatPrice(p.price)}</span>
+                    <div className="product-actions">
+                      {showEdit && (
+                        <button type="button" className="icon-button" aria-label={`Edit ${p.name}`}
+                          onClick={() => setProductModal({ product: p })}>
+                          <IconEdit />
+                        </button>
+                      )}
+                      {showDelete && (
+                        <button type="button" className="icon-button icon-button-danger"
+                          aria-label={`Delete ${p.name}`} onClick={() => setDeleteTarget(p)}>
+                          <IconTrash />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+              );
+            })}
           </div>
+        )}
 
-          {pagination.totalPages > 1 && (
-            <div className="pagination">
-              <button className="btn btn-secondary" disabled={page === 1}
-                onClick={() => setPage(page - 1)}>
-                Previous
-              </button>
-              <span>Page {page} of {pagination.totalPages}</span>
-              <button className="btn btn-secondary" disabled={page === pagination.totalPages}
-                onClick={() => setPage(page + 1)}>
-                Next
-              </button>
-            </div>
-          )}
-        </section>
+        {pagination.totalPages > 1 && !loading && (
+          <nav className="pagination" aria-label="Pagination">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={page === 1}
+              onClick={() => setPage(page - 1)}>
+              Previous
+            </button>
+            <span>Page {page} of {pagination.totalPages}</span>
+            <button type="button" className="btn btn-secondary btn-sm"
+              disabled={page === pagination.totalPages} onClick={() => setPage(page + 1)}>
+              Next
+            </button>
+          </nav>
+        )}
       </main>
+
+      {productModal && (
+        <ProductModal
+          product={productModal.product}
+          onClose={() => setProductModal(null)}
+          onSaved={handleSaved}
+          onUnauthorized={onLogout}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete product?"
+          message={`"${deleteTarget.name}" and its photo will be removed permanently.`}
+          confirmLabel="Delete product"
+          busyLabel="Deleting..."
+          busy={deleting}
+          onConfirm={handleDelete}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }
