@@ -137,7 +137,7 @@ function App() {
   if (!user) {
     return <AuthPage onLogin={handleLogin} />;
   }
-
+  
   // Shared props for every page
   const pageProps = {
     user,
