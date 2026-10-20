@@ -27,8 +27,8 @@ export const api = async (path, { method = 'GET', body } = {}) => {
   if (body) {
     requestBody = isFormData ? body : JSON.stringify(body);
   }
-
-  const res = await fetch(`${SERVER_URL}${path}`, {
+                          // localhost:8000/api/auth/login
+  const res = await fetch(`${SERVER_URL}/api${path}`, {
     method,
     headers,
     body: requestBody,
